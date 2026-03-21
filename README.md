@@ -156,9 +156,7 @@ This project uses mental health-related social media text. All data is:
 
 **[Your Name]**  
 MSc [AI/ML] — [Liverpool Johm Moores University]  
-[uplcpriy@ljmu.ac.uk] | [www.linkedin.com/in/
-chetnapriyadarshini
-]
+[uplcpriy@ljmu.ac.uk] | [www.linkedin.com/in/chetnapriyadarshini]
 
 ---
 
