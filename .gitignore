@@ -1,0 +1,19 @@
+# Model checkpoints and weights
+checkpoints/
+*.bin
+*.pt
+*.safetensors
+
+# Data files (too large for GitHub)
+data/*.csv
+data/*.parquet
+data/*.json
+*.arrow
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment
+.env
+__pycache__/
+*.pyc
