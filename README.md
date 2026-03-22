@@ -154,7 +154,7 @@ This project uses mental health-related social media text. All data is:
 
 ## 👤 Author
 
-**[Your Name]**  
+**[Chetna Priyadarshini]**  
 MSc [AI/ML] — [Liverpool Johm Moores University]  
 [uplcpriy@ljmu.ac.uk] | [www.linkedin.com/in/chetnapriyadarshini]
 
