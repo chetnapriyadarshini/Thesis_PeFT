@@ -56,7 +56,7 @@ def redact_batch(batch: dict, text_col: str) -> dict:
 print("Presidio ready ✅")
 
 # ── Constants ─────────────────────────────────────────────────
-DATA_PATH = "/kaggle/input/datasets/atharvjairath/empathetic-dialogues-facebook-ai/empathetic-dialogues-facebook-ai.csv"
+DATA_PATH = "/kaggle/input/datasets/atharvjairath/empathetic-dialogues-facebook-ai/emotion-emotion_69k.csv"
 
 # Valid emotion labels (32 known emotions)
 VALID_EMOTIONS = [
