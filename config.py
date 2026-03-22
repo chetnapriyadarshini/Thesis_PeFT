@@ -12,6 +12,7 @@ def set_seed(seed=SEED):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+
 # ── Paths ─────────────────────────────────────────────────────
 # Automatically works on both local and Kaggle
 if os.path.exists("/kaggle/working"):
@@ -36,3 +37,7 @@ LEARNING_RATE = 2e-4
 BATCH_SIZE    = 16
 NUM_EPOCHS    = 5
 MAX_LENGTH    = 128
+
+# ── Run on import ─────────────────────────────────────────────
+set_seed()
+print(f"Config loaded |  BASE_DIR: {BASE_DIR}")
