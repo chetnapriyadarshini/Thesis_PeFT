@@ -80,7 +80,7 @@ print(dataset)
 
 # label names
 label_df    = pd.read_csv(os.path.join(DATA_DIR, "label_names.csv"))
-id2label    = dict(zip(label_df["id"].astype(int), label_df["label"]))
+id2label    = dict(zip(label_df["id"].astype(int), label_df["name"]))
 label2id    = {v: k for k, v in id2label.items()}
 num_labels  = len(id2label)
 print(f"Labels ({num_labels}): {id2label}")
