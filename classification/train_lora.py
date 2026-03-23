@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 import torch
 import wandb
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from datasets import load_from_disk
 from torch.utils.data import DataLoader
@@ -188,9 +190,69 @@ def compute_metrics(eval_pred):
     }
 
 # =============================================================================
-# 7.  W&B initialisation
+# 7.  Confusion matrix helper
 # =============================================================================
-wandb.init(
+def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
+    """Generate predictions, plot a normalised confusion matrix and save it."""
+    from sklearn.metrics import confusion_matrix
+
+    predictions = trainer.predict(dataset)
+    preds  = np.argmax(predictions.predictions, axis=-1)
+    labels = predictions.label_ids
+
+    label_names = [id2label[i] for i in range(len(id2label))]
+
+    # ── Raw counts ───────────────────────────────────────────────────────────
+    cm      = confusion_matrix(labels, preds)
+    # ── Row-normalised (recall per class) ────────────────────────────────────
+    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+
+    for ax, data, title, fmt in zip(
+        axes,
+        [cm, cm_norm],
+        ["Confusion Matrix — Raw Counts", "Confusion Matrix — Normalised (Recall)"],
+        ["d", ".2f"],
+    ):
+        sns.heatmap(
+            data,
+            annot=True,
+            fmt=fmt,
+            cmap="Blues",
+            xticklabels=label_names,
+            yticklabels=label_names,
+            linewidths=0.5,
+            ax=ax,
+        )
+        ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
+        ax.set_xlabel("Predicted Label", fontsize=11)
+        ax.set_ylabel("True Label", fontsize=11)
+        ax.tick_params(axis="x", rotation=45)
+        ax.tick_params(axis="y", rotation=0)
+
+    plt.suptitle(
+        f"DistilBERT + LoRA — {split.capitalize()} Set",
+        fontsize=15, fontweight="bold", y=1.01,
+    )
+    plt.tight_layout()
+
+    # Save locally
+    fig_path = os.path.join(output_dir, f"confusion_matrix_{split}.png")
+    fig.savefig(fig_path, dpi=150, bbox_inches="tight")
+    print(f"Confusion matrix saved → {fig_path}")
+
+    # Log to W&B
+    wandb.log({f"confusion_matrix_{split}": wandb.Image(fig)})
+    plt.close(fig)
+
+    return preds, labels
+
+
+# =============================================================================
+# 8.  W&B initialisation
+# =============================================================================
+
     project="peft-mental-health",
     name="distilbert-lora-classification",
     config={
@@ -211,7 +273,7 @@ wandb.init(
 )
 
 # =============================================================================
-# 8.  TrainingArguments
+# 9.  TrainingArguments
 # =============================================================================
 training_args = TrainingArguments(
     output_dir=CKPT_DIR,
@@ -248,7 +310,7 @@ training_args = TrainingArguments(
 )
 
 # =============================================================================
-# 9.  Train
+# 10.  Train
 # =============================================================================
 data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -268,7 +330,7 @@ print("\n── Starting LoRA training ─────────────�
 trainer.train()
 
 # =============================================================================
-# 10.  Final evaluation on held-out test set
+# 11.  Final evaluation on held-out test set
 # =============================================================================
 print("\n── Evaluating on test set ──────────────────────────────────────────────")
 test_results = trainer.evaluate(eval_dataset=tokenized["test"])
@@ -281,7 +343,19 @@ with open(results_path, "w") as f:
 print(f"Test results saved → {results_path}")
 
 # =============================================================================
-# 11.  Save final model adapter
+# 12.  Confusion matrix on test set
+# =============================================================================
+print("\n── Generating confusion matrix ─────────────────────────────────────────")
+plot_confusion_matrix(
+    trainer=trainer,
+    dataset=tokenized["test"],
+    id2label=id2label,
+    output_dir=OUTPUT_DIR,
+    split="test",
+)
+
+# =============================================================================
+# 13.  Save final model adapter
 # =============================================================================
 adapter_path = os.path.join(OUTPUT_DIR, "lora_adapter")
 model.save_pretrained(adapter_path)
