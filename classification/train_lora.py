@@ -253,24 +253,24 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
 # 8.  W&B initialisation
 # =============================================================================
 
-    project="peft-mental-health",
-    name="distilbert-lora-classification",
-    config={
-        "model":         MODEL_NAME,
-        "method":        "LoRA",
-        "lora_r":        LORA_R,
-        "lora_alpha":    LORA_ALPHA,
-        "lora_dropout":  LORA_DROPOUT,
-        "lr":            LEARNING_RATE,
-        "batch_size":    BATCH_SIZE,
-        "epochs":        NUM_EPOCHS,
-        "weight_decay":  WEIGHT_DECAY,
-        "warmup_ratio":  WARMUP_RATIO,
-        "num_labels":    num_labels,
-        "seed":          config.SEED,
-    },
-    tags=["lora", "distilbert", "classification", "mental-health"],
-)
+project="peft-mental-health",
+name="distilbert-lora-classification",
+config={
+    "model":         MODEL_NAME,
+    "method":        "LoRA",
+    "lora_r":        LORA_R,
+    "lora_alpha":    LORA_ALPHA,
+    "lora_dropout":  LORA_DROPOUT,
+    "lr":            LEARNING_RATE,
+    "batch_size":    BATCH_SIZE,
+    "epochs":        NUM_EPOCHS,
+    "weight_decay":  WEIGHT_DECAY,
+    "warmup_ratio":  WARMUP_RATIO,
+    "num_labels":    num_labels,
+    "seed":          config.SEED,
+},
+tags=["lora", "distilbert", "classification", "mental-health"],
+
 
 # =============================================================================
 # 9.  TrainingArguments
