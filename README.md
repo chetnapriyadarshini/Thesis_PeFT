@@ -24,7 +24,7 @@ response generation.
 
 | Task | Model | Dataset |
 |------|-------|---------|
-| Mental health text classification | DistilBERT | SWMH + IMDB |
+| Mental health text classification | DistilBERT | SWMH |
 | Empathetic response generation | Llama 3.2 3B | Empathetic Dialogues |
 
 ---
