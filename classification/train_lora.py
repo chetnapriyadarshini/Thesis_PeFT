@@ -9,7 +9,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # ── Allow running from repo root ──────────────────────────────────────────────
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from datasets import load_from_disk
-from torch.utils.data import DataLoader
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
@@ -253,24 +252,25 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
 # 8.  W&B initialisation
 # =============================================================================
 
-project="peft-mental-health",
-name="distilbert-lora-classification",
-config={
-    "model":         MODEL_NAME,
-    "method":        "LoRA",
-    "lora_r":        LORA_R,
-    "lora_alpha":    LORA_ALPHA,
-    "lora_dropout":  LORA_DROPOUT,
-    "lr":            LEARNING_RATE,
-    "batch_size":    BATCH_SIZE,
-    "epochs":        NUM_EPOCHS,
-    "weight_decay":  WEIGHT_DECAY,
-    "warmup_ratio":  WARMUP_RATIO,
-    "num_labels":    num_labels,
-    "seed":          config.SEED,
-},
-tags=["lora", "distilbert", "classification", "mental-health"],
-
+wandb.init(
+    project="peft-mental-health",
+    name="distilbert-lora-classification",
+    config={
+        "model":         MODEL_NAME,
+        "method":        "LoRA",
+        "lora_r":        LORA_R,
+        "lora_alpha":    LORA_ALPHA,
+        "lora_dropout":  LORA_DROPOUT,
+        "lr":            LEARNING_RATE,
+        "batch_size":    BATCH_SIZE,
+        "epochs":        NUM_EPOCHS,
+        "weight_decay":  WEIGHT_DECAY,
+        "warmup_ratio":  WARMUP_RATIO,
+        "num_labels":    num_labels,
+        "seed":          config.SEED,
+    },
+    tags=["lora", "distilbert", "classification", "mental-health"],
+)
 
 # =============================================================================
 # 9.  TrainingArguments
