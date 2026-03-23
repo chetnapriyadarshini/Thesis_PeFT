@@ -53,7 +53,7 @@ def redact_batch(batch: dict, text_col: str) -> dict:
     batch[text_col] = [redact_pii(t) for t in batch[text_col]]
     return batch
 
-print("Presidio ready ✅")
+print("Presidio ready")
 
 # ── Constants ─────────────────────────────────────────────────
 DATA_PATH = "/kaggle/input/datasets/atharvjairath/empathetic-dialogues-facebook-ai/emotion-emotion_69k.csv"
@@ -161,13 +161,13 @@ for split in gen_dataset:
 save_path = os.path.join(DATA_DIR, "generation")
 os.makedirs(save_path, exist_ok=True)
 gen_dataset.save_to_disk(save_path)
-print(f"\nGeneration data saved → {save_path} ✅")
+print(f"\nGeneration data saved → {save_path} ")
 
 # Save emotion list for reference
 emotion_df = pd.DataFrame({"emotion": VALID_EMOTIONS})
 emotion_df.to_csv(os.path.join(save_path, "emotions.csv"), index=False)
-print(f"Emotion list saved → {save_path}/emotions.csv ✅")
+print(f"Emotion list saved → {save_path}/emotions.csv ")
 
 print("\n" + "="*55)
-print("Generation data pipeline complete ✅")
+print("Generation data pipeline complete ")
 print("="*55)
