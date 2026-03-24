@@ -112,13 +112,14 @@ print(f"Class weights: {class_weights.tolist()}")
 # =============================================================================
 print("\n── Tokenising ──────────────────────────────────────────────────────────")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+MAX_LENGTH = 256
 
 def tokenize(batch):
     return tokenizer(
         batch["text"],
         truncation=True,
-        max_length=256,
-        padding=max_length,         # reddit posts are rarely longer
+        max_length=MAX_LENGTH,
+        padding=MAX_LENGTH,         # reddit posts are rarely longer
     )
 
 tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
