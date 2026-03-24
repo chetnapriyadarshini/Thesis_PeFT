@@ -180,8 +180,11 @@ class WeightedReftTrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         labels = inputs.pop("labels")
-        outputs = model(**inputs)
-        logits  = outputs.logits
+        outputs = model(
+        base=inputs,
+        unit_locations=None,
+    )
+        logits  = outputs[0].logits #pyvene returns a tuple of (base_output, counterfactual_outputs), so [0] gets the base model output
         loss_fn = torch.nn.CrossEntropyLoss(weight=self.class_weights)
         loss    = loss_fn(logits, labels)
         return (loss, outputs) if return_outputs else loss
