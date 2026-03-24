@@ -151,7 +151,7 @@ reft_config = ReftConfig(
     representations=[
         {
             "layer"             : l,
-            "component"         : f"distilbert.transformer.layer.{l}.output_layer_norm",
+            "component"         : f"distilbert.transformer.layer.{l}.output_layer_norm.output",
             "low_rank_dimension": REFT_RANK,
             "intervention"      : LoreftIntervention(
                 embed_dim          = base_model.config.dim,
