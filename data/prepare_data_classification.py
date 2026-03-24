@@ -142,14 +142,15 @@ combined = combined[["text", "label"]].reset_index(drop=True)
 # ── Compute class weights ─────────────────────────────────────
 # Formula: total / (num_classes * class_count)
 print("\nComputing class weights...")
-num_classes  = len(LABEL_MAP)
-total        = len(combined)
+num_classes  = len(LABEL_MAP)# total number of unique classes
+total        = len(combined)# total number of samples in the dataset
 class_counts = combined["label"].value_counts().sort_index()
 class_weights = {}
 
 for label_id in sorted(LABEL_MAP.values()):
-    count = class_counts[label_id]
-    weight = total / (num_classes * count)
+    count = class_counts[label_id]# how many samples this class has
+    #To work with class imbalance
+    weight = total / (num_classes * count)# higher count → lower weight 
     class_weights[label_id] = round(weight, 4)
     print(f"  {label_id} — {LABEL_NAMES[label_id]}: "
           f"count={count}, weight={weight:.4f}")
