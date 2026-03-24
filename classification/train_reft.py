@@ -119,7 +119,7 @@ def tokenize(batch):
         batch["text"],
         truncation=True,
         max_length=MAX_LENGTH,
-        padding=MAX_LENGTH,         # reddit posts are rarely longer
+        padding='max_length',         # reddit posts are rarely longer
     )
 
 tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
