@@ -34,12 +34,12 @@ from transformers import (
     DataCollatorWithPadding,
     EarlyStoppingCallback,
     set_seed,
+    Trainer,
 )
 from pyreft import (
     ReftConfig,
     LoreftIntervention,
-    get_reft_model,
-    ReftTrainerForSequenceClassification,
+    get_reft_model
 )
 from sklearn.metrics import (
     f1_score, precision_score, recall_score,
@@ -169,8 +169,8 @@ reft_model.print_trainable_parameters()
 # =============================================================================
 # 5.  Custom ReFT Trainer with weighted cross-entropy loss
 # =============================================================================
-class WeightedReftTrainer(ReftTrainerForSequenceClassification):
-    """ReftTrainerForSequenceClassification with class-weighted CE loss."""
+class WeightedReftTrainer(Trainer):
+    """Standard Trainer with class-weighted CE loss for ReFT model."""
 
     def __init__(self, class_weights, **kwargs):
         super().__init__(**kwargs)
