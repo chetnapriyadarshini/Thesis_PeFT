@@ -123,7 +123,8 @@ def tokenize(batch):
 
 tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
 tokenized.set_format("torch")
-print(tokenized)
+print(tokenized["train"].features)
+print(tokenized["train"][0])
 
 # =============================================================================
 # 4.  Build DistilBERT + ReFT model
