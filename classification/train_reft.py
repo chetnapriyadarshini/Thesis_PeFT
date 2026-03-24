@@ -31,7 +31,7 @@ from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     TrainingArguments,
-    DataCollatorWithPadding,
+    default_data_collator,
     EarlyStoppingCallback,
     set_seed,
     Trainer,
@@ -118,7 +118,7 @@ def tokenize(batch):
         batch["text"],
         truncation=True,
         max_length=256,
-        padding=False,
+        padding=max_length,         # reddit posts are rarely longer
     )
 
 tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
@@ -335,7 +335,7 @@ training_args = TrainingArguments(
 # =============================================================================
 # 10.  Train
 # =============================================================================
-data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+data_collator = default_data_collator
 
 trainer = WeightedReftTrainer(
     class_weights=class_weights,
