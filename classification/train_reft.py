@@ -1,21 +1,28 @@
 # =============================================================================
 # classification/train_reft.py
-# DistilBERT + ReFT (LoReFT) — Mental Health Stress Classification
+# DistilBERT + LoReFT (manual) — Mental Health Stress Classification
 #
-# Key difference from train_lora.py:
-#   LoRA  → modifies weight matrices (W = W₀ + AB)
-#   ReFT  → modifies hidden representations at specific layers/positions
-#           Φ(h) = h + Rᵀ(Wh + b − Rh)  where R is a low-rank projection
+# ReFT is implemented manually using PyTorch forward hooks — no pyvene/pyreft
+# dependency. This avoids version conflicts and makes the implementation fully
+# transparent and explainable.
 #
-# This script is kept as close as possible to train_lora.py so that
-# any performance difference is attributable to the fine-tuning method only.
+# LoReFT formula per layer, per position:
+#   h_new = h + Rᵀ(Wh + b − Rh)
+#   where:
+#     h  = hidden representation at the intervened position (CLS + last token)
+#     R  = low-rank orthonormal projection matrix (embed_dim × rank)
+#     W  = learned linear transform (embed_dim → rank)
+#     b  = learned bias
+#
+# This script is kept as close as possible to train_lora.py so that any
+# performance difference is attributable to the fine-tuning method only.
 # =============================================================================
 
 import os, sys, json, random, warnings
 warnings.filterwarnings("ignore")
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0" #Pyvene interventions Pytorch comptability issue workaround(GPU 0 only)
+os.environ["TF_CPP_MIN_LOG_LEVEL"]    = "3"
+os.environ["TOKENIZERS_PARALLELISM"]  = "false"
+os.environ["CUDA_VISIBLE_DEVICES"]    = "0"   # prevent DataParallel issues
 
 # ── Allow running from repo root ──────────────────────────────────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -23,6 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
 import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -32,16 +40,12 @@ from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     TrainingArguments,
+    Trainer,
     default_data_collator,
     EarlyStoppingCallback,
     set_seed,
-    Trainer,
 )
-from pyreft import (
-    ReftConfig,
-    LoreftIntervention,
-    get_reft_model
-)
+from transformers.modeling_outputs import SequenceClassifierOutput
 from sklearn.metrics import (
     f1_score, precision_score, recall_score,
     roc_auc_score, accuracy_score,
@@ -72,12 +76,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 MODEL_NAME = "distilbert-base-uncased"
 
 # ReFT hyper-parameters
-# DistilBERT has 6 transformer layers (0–5) — intervene on all
-REFT_LAYERS       = list(range(6))
-REFT_RANK         = 4       # low-rank dimension of the intervention subspace
-                            # LoRA used r=8; ReFT r=4 still gives ~10x fewer params
-REFT_POSITIONS    = "f1+l1" # intervene at first token (CLS) + last token
-                            # "f1" = first token only is also valid for classification
+REFT_LAYERS    = list(range(6))   # all 6 DistilBERT layers
+REFT_RANK      = 4                # low-rank dimension — ~10x fewer params than LoRA r=8
+REFT_POSITIONS = [0, -1]          # CLS token + last token (f1+l1 in pyreft notation)
 
 # Training hyper-parameters — identical to LoRA for fair comparison
 LEARNING_RATE  = 2e-4
@@ -113,14 +114,13 @@ print(f"Class weights: {class_weights.tolist()}")
 # =============================================================================
 print("\n── Tokenising ──────────────────────────────────────────────────────────")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-MAX_LENGTH = 256
 
 def tokenize(batch):
     return tokenizer(
         batch["text"],
         truncation=True,
-        max_length=MAX_LENGTH,
-        padding='max_length',         # reddit posts are rarely longer
+        max_length=256,
+        padding="max_length",   # static padding required for default_data_collator
     )
 
 tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
@@ -128,75 +128,193 @@ tokenized.set_format("torch")
 print(tokenized)
 
 # =============================================================================
-# 4.  Build DistilBERT + ReFT model
+# 4.  LoReFT intervention module
 # =============================================================================
-print("\n── Building DistilBERT + ReFT (LoReFT) ────────────────────────────────")
+class LoReFTIntervention(nn.Module):
+    """
+    Manual implementation of LoReFT (Low-Rank Linear Subspace ReFT).
 
-base_model = AutoModelForSequenceClassification.from_pretrained(
-    MODEL_NAME,
-    num_labels=num_labels,
-    id2label=id2label,
-    label2id=label2id,
+    For each intervened position (CLS + last token) in each layer:
+        h_new = h + Rᵀ(Wh + b − Rh)
+
+    Parameters
+    ----------
+    embed_dim : int
+        Hidden size of the base model (768 for DistilBERT)
+    rank : int
+        Rank of the intervention subspace (REFT_RANK)
+    positions : list[int]
+        Token positions to intervene on. [0, -1] = CLS + last token.
+    """
+
+    def __init__(self, embed_dim: int, rank: int, positions: list):
+        super().__init__()
+        self.positions = positions
+
+        # R: orthonormal projection matrix (rank × embed_dim)
+        # Projects representations down to the low-rank subspace
+        self.R = nn.Linear(embed_dim, rank, bias=False)
+        torch.nn.init.orthogonal_(self.R.weight)  # orthonormal initialisation
+
+        # W: learned transform (embed_dim → rank) with bias
+        # Learns where the representation should move in the subspace
+        self.W = nn.Linear(embed_dim, rank, bias=True)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        """
+        Apply LoReFT intervention to hidden states.
+
+        Parameters
+        ----------
+        h : torch.Tensor  shape (batch, seq_len, embed_dim)
+
+        Returns
+        -------
+        h : torch.Tensor  shape (batch, seq_len, embed_dim)
+        """
+        h = h.clone()   # avoid in-place modification of the computation graph
+        for pos in self.positions:
+            h_pos = h[:, pos, :]                    # (batch, embed_dim)
+
+            # ── Core LoReFT formula ─────────────────────────────────────────
+            # W(h_pos) → learned target in subspace  (batch, rank)
+            # R(h_pos) → current position in subspace (batch, rank)
+            # difference = edit needed in subspace    (batch, rank)
+            # @ R.weight → project edit back to full space (batch, embed_dim)
+            difference   = self.W(h_pos) - self.R(h_pos)   # (batch, rank)
+            intervention = difference @ self.R.weight       # (batch, embed_dim)
+
+            h[:, pos, :] = h_pos + intervention
+            # ────────────────────────────────────────────────────────────────
+
+        return h
+
+
+# =============================================================================
+# 5.  DistilBERT + LoReFT model
+# =============================================================================
+print("\n── Building DistilBERT + LoReFT ────────────────────────────────────────")
+
+class DistilBertWithLoReFT(nn.Module):
+    """
+    DistilBERT with LoReFT interventions applied at the output of each
+    transformer layer's output_layer_norm.
+
+    All base model parameters are FROZEN. Only the LoReFT intervention
+    parameters (R, W, b) are trained.
+
+    Architecture
+    ------------
+    For each of DistilBERT's 6 layers:
+        [transformer block] → output_layer_norm → [LoReFT hook] → next layer
+
+    The hook intercepts the output of output_layer_norm and applies the
+    LoReFT intervention before passing activations to the next layer.
+    """
+
+    def __init__(self, model_name, num_labels, id2label, label2id,
+                 reft_layers, reft_rank, reft_positions):
+        super().__init__()
+
+        # ── Load base model ──────────────────────────────────────────────────
+        self.base = AutoModelForSequenceClassification.from_pretrained(
+            model_name,
+            num_labels=num_labels,
+            id2label=id2label,
+            label2id=label2id,
+        )
+
+        # ── Freeze ALL base model parameters ─────────────────────────────────
+        for param in self.base.parameters():
+            param.requires_grad = False
+
+        # ── Create one LoReFT intervention per layer ─────────────────────────
+        embed_dim = self.base.config.dim   # 768 for DistilBERT
+        self.interventions = nn.ModuleList([
+            LoReFTIntervention(embed_dim, reft_rank, reft_positions)
+            for _ in reft_layers
+        ])
+
+        # ── Register forward hooks on output_layer_norm of each layer ────────
+        # The hook fires after output_layer_norm computes its output,
+        # intercepts the tensor, and passes it through LoReFTIntervention
+        self._hooks = []
+        for idx, layer_idx in enumerate(reft_layers):
+            layer_norm  = self.base.distilbert.transformer.layer[layer_idx].output_layer_norm
+            intervention = self.interventions[idx]
+
+            def make_hook(iv):
+                def hook(module, input, output):
+                    return iv(output)
+                return hook
+
+            handle = layer_norm.register_forward_hook(make_hook(intervention))
+            self._hooks.append(handle)
+
+        self.config = self.base.config
+
+    def forward(self, input_ids=None, attention_mask=None, labels=None, **kwargs):
+        # Standard HuggingFace forward — hooks fire automatically inside
+        outputs = self.base(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+        return SequenceClassifierOutput(logits=outputs.logits)
+
+    def print_trainable_parameters(self):
+        trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        total     = sum(p.numel() for p in self.base.parameters())
+        print(f"trainable params: {trainable:,} || "
+              f"all params: {total:,} || "
+              f"trainable%: {100 * trainable / total:.4f}")
+
+    def save_interventions(self, path):
+        """Save only the intervention weights — equivalent to LoRA adapter save."""
+        os.makedirs(path, exist_ok=True)
+        torch.save(
+            {f"intervention_{i}": iv.state_dict()
+             for i, iv in enumerate(self.interventions)},
+            os.path.join(path, "reft_interventions.pt")
+        )
+        print(f"ReFT interventions saved → {path}/reft_interventions.pt")
+
+
+# ── Instantiate ───────────────────────────────────────────────────────────────
+model = DistilBertWithLoReFT(
+    model_name     = MODEL_NAME,
+    num_labels     = num_labels,
+    id2label       = id2label,
+    label2id       = label2id,
+    reft_layers    = REFT_LAYERS,
+    reft_rank      = REFT_RANK,
+    reft_positions = REFT_POSITIONS,
 )
-
-# ── ReftConfig ───────────────────────────────────────────────────────────────
-# Each entry in representations defines ONE intervention:
-#   layer     → which transformer layer to intervene on
-#   component → "block_output" maps to the layer's residual stream output
-#   intervention → LoReFT: Φ(h) = h + Rᵀ(Wh + b − Rh)
-#
-# We apply interventions to all 6 DistilBERT layers.
-# Positions "f1+l1" means first token (CLS) and last token — standard for
-# classification tasks in the ReFT paper.
-# =============================================================================
-reft_config = ReftConfig(
-    representations=[
-        {
-            "layer"             : l,
-            "component"         : f"distilbert.transformer.layer.{l}.output_layer_norm.output",
-            "low_rank_dimension": REFT_RANK,
-            "intervention"      : LoreftIntervention(
-                embed_dim          = base_model.config.dim,
-                low_rank_dimension = REFT_RANK,
-            ),
-        }
-        for l in REFT_LAYERS
-    ]
-)
-
-reft_model = get_reft_model(base_model, reft_config)
-reft_model.set_device("cuda" if torch.cuda.is_available() else "cpu")
-reft_model.print_trainable_parameters()
+model.print_trainable_parameters()
 
 # =============================================================================
-# 5.  Custom ReFT Trainer with weighted cross-entropy loss
+# 6.  Weighted Trainer
 # =============================================================================
-class WeightedReftTrainer(Trainer):
-    """Standard Trainer with class-weighted CE loss for ReFT model."""
+class WeightedTrainer(Trainer):
+    """Standard HuggingFace Trainer with class-weighted CE loss."""
 
     def __init__(self, class_weights, **kwargs):
         super().__init__(**kwargs)
         self.class_weights = class_weights.to(self.args.device)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        labels = inputs.pop("labels")
-        outputs = model(
-        base=inputs,
-        unit_locations=None,
-    )
-        logits  = outputs[0].logits #pyvene returns a tuple of (base_output, counterfactual_outputs), so [0] gets the base model output
-        loss_fn = torch.nn.CrossEntropyLoss(weight=self.class_weights)
-        loss    = loss_fn(logits, labels)
+        labels  = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits  = outputs.logits
+        loss    = nn.CrossEntropyLoss(weight=self.class_weights)(logits, labels)
         return (loss, outputs) if return_outputs else loss
 
 # =============================================================================
-# 6.  Evaluation metrics  (identical to LoRA for fair comparison)
+# 7.  Evaluation metrics  (identical to LoRA)
 # =============================================================================
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
-    preds = np.argmax(logits, axis=-1)
-
-    probs = torch.softmax(torch.tensor(logits, dtype=torch.float), dim=-1).numpy()
+    preds  = np.argmax(logits, axis=-1)
+    probs  = torch.softmax(torch.tensor(logits, dtype=torch.float), dim=-1).numpy()
 
     f1        = f1_score(labels, preds, average="weighted", zero_division=0)
     precision = precision_score(labels, preds, average="weighted", zero_division=0)
@@ -217,7 +335,7 @@ def compute_metrics(eval_pred):
     }
 
 # =============================================================================
-# 7.  Confusion matrix helper  (identical to LoRA)
+# 8.  Confusion matrix helper  (identical to LoRA)
 # =============================================================================
 def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
     from sklearn.metrics import confusion_matrix
@@ -227,7 +345,6 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
     labels = predictions.label_ids
 
     label_names = [id2label[i] for i in range(len(id2label))]
-
     cm      = confusion_matrix(labels, preds)
     cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
 
@@ -240,26 +357,17 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
         ["d", ".2f"],
     ):
         sns.heatmap(
-            data,
-            annot=False,
-            fmt=fmt,
-            cmap="Blues",
-            xticklabels=label_names,
-            yticklabels=label_names,
-            linewidths=0.5,
-            ax=ax,
+            data, annot=False, fmt=fmt, cmap="Blues",
+            xticklabels=label_names, yticklabels=label_names,
+            linewidths=0.5, ax=ax,
         )
         data_norm = (data - data.min()) / (data.max() - data.min() + 1e-9)
         for i in range(data.shape[0]):
             for j in range(data.shape[1]):
                 text_colour = "white" if data_norm[i, j] > 0.5 else "black"
-                ax.text(
-                    j + 0.5, i + 0.5,
-                    f"{data[i, j]:{fmt}}",
-                    ha="center", va="center",
-                    fontsize=11, fontweight="bold",
-                    color=text_colour,
-                )
+                ax.text(j + 0.5, i + 0.5, f"{data[i, j]:{fmt}}",
+                        ha="center", va="center",
+                        fontsize=11, fontweight="bold", color=text_colour)
 
         ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
         ax.set_xlabel("Predicted Label", fontsize=11)
@@ -267,10 +375,8 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
         ax.tick_params(axis="x", rotation=45)
         ax.tick_params(axis="y", rotation=0)
 
-    plt.suptitle(
-        f"DistilBERT + ReFT — {split.capitalize()} Set",
-        fontsize=15, fontweight="bold", y=1.01,
-    )
+    plt.suptitle(f"DistilBERT + LoReFT (manual) — {split.capitalize()} Set",
+                 fontsize=15, fontweight="bold", y=1.01)
     plt.tight_layout()
 
     fig_path = os.path.join(output_dir, f"confusion_matrix_{split}.png")
@@ -279,21 +385,20 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
 
     wandb.log({f"confusion_matrix_{split}": wandb.Image(fig)})
     plt.close(fig)
-
     return preds, labels
 
 # =============================================================================
-# 8.  W&B initialisation
+# 9.  W&B initialisation
 # =============================================================================
 wandb.init(
     project="peft-mental-health",
-    name="distilbert-reft-classification",
+    name="distilbert-loreft-manual-classification",
     config={
         "model":          MODEL_NAME,
-        "method":         "ReFT (LoReFT)",
+        "method":         "LoReFT (manual)",
         "reft_rank":      REFT_RANK,
         "reft_layers":    REFT_LAYERS,
-        "reft_positions": REFT_POSITIONS,
+        "reft_positions": str(REFT_POSITIONS),
         "lr":             LEARNING_RATE,
         "batch_size":     BATCH_SIZE,
         "epochs":         NUM_EPOCHS,
@@ -302,11 +407,11 @@ wandb.init(
         "num_labels":     num_labels,
         "seed":           config.SEED,
     },
-    tags=["reft", "loreft", "distilbert", "classification", "mental-health"],
+    tags=["reft", "loreft", "manual", "distilbert", "classification", "mental-health"],
 )
 
 # =============================================================================
-# 9.  TrainingArguments  (identical to LoRA for fair comparison)
+# 10.  TrainingArguments  (identical to LoRA)
 # =============================================================================
 training_args = TrainingArguments(
     output_dir=CKPT_DIR,
@@ -337,27 +442,25 @@ training_args = TrainingArguments(
 )
 
 # =============================================================================
-# 10.  Train
+# 11.  Train
 # =============================================================================
-data_collator = default_data_collator
-
-trainer = WeightedReftTrainer(
+trainer = WeightedTrainer(
     class_weights=class_weights,
-    model=reft_model,
+    model=model,
     tokenizer=tokenizer,
     args=training_args,
     train_dataset=tokenized["train"],
     eval_dataset=tokenized["val"],
-    data_collator=data_collator,
+    data_collator=default_data_collator,
     compute_metrics=compute_metrics,
     callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
 )
 
-print("\n── Starting ReFT training ───────────────────────────────────────────────")
+print("\n── Starting LoReFT training ─────────────────────────────────────────────")
 trainer.train()
 
 # =============================================================================
-# 11.  Final evaluation on held-out test set
+# 12.  Final evaluation on held-out test set
 # =============================================================================
 print("\n── Evaluating on test set ──────────────────────────────────────────────")
 test_results = trainer.evaluate(eval_dataset=tokenized["test"])
@@ -369,7 +472,7 @@ with open(results_path, "w") as f:
 print(f"Test results saved → {results_path}")
 
 # =============================================================================
-# 12.  Confusion matrix on test set
+# 13.  Confusion matrix on test set
 # =============================================================================
 print("\n── Generating confusion matrix ─────────────────────────────────────────")
 plot_confusion_matrix(
@@ -381,12 +484,11 @@ plot_confusion_matrix(
 )
 
 # =============================================================================
-# 13.  Save final ReFT model
+# 14.  Save intervention weights
 # =============================================================================
 reft_model_path = os.path.join(OUTPUT_DIR, "reft_model")
-reft_model.save(reft_model_path)
+model.save_interventions(reft_model_path)
 tokenizer.save_pretrained(reft_model_path)
-print(f"ReFT model saved → {reft_model_path}")
 
 wandb.finish()
-print("\n✅  ReFT classification training complete.")
+print("\n LoReFT (manual) classification training complete.")

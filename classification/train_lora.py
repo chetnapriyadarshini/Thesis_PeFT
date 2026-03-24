@@ -216,7 +216,7 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
     ):
         sns.heatmap(
             data,
-            annot=True,
+            annot=False,
             fmt=fmt,
             cmap="Blues",
             xticklabels=label_names,
@@ -224,6 +224,14 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
             linewidths=0.5,
             ax=ax,
         )
+   
+        data_norm = (data - data.min()) / (data.max() - data.min() + 1e-9)
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                text_colour = "white" if data_norm[i, j] > 0.5 else "black"
+                ax.text(j + 0.5, i + 0.5, f"{data[i, j]:{fmt}}",
+                        ha="center", va="center",
+                        fontsize=11, fontweight="bold", color=text_colour)
         ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
         ax.set_xlabel("Predicted Label", fontsize=11)
         ax.set_ylabel("True Label", fontsize=11)
