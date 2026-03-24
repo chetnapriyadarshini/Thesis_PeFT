@@ -15,6 +15,7 @@ import os, sys, json, random, warnings
 warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0" #Pyvene interventions Pytorch comptability issue workaround(GPU 0 only)
 
 # ── Allow running from repo root ──────────────────────────────────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -124,8 +125,7 @@ def tokenize(batch):
 
 tokenized = dataset.map(tokenize, batched=True, remove_columns=["text"])
 tokenized.set_format("torch")
-print(tokenized["train"].features)
-print(tokenized["train"][0])
+print(tokenized)
 
 # =============================================================================
 # 4.  Build DistilBERT + ReFT model
