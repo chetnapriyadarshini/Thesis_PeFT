@@ -251,8 +251,8 @@ sft_config = SFTConfig(
     greater_is_better=False,
 
     # ── Precision ───────────────────────────────────────────────────────────
-    fp16=True,                      # T4 uses fp16 (no bfloat16 support)
-    bf16=False,
+    fp16=False,
+    bf16=True, #works with Unsloth's 4-bit models on T4 (16GB) — faster than fp16 and compatible with older GPUs
 
     # ── Logging ─────────────────────────────────────────────────────────────
     logging_steps=50,
