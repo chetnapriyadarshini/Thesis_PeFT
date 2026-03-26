@@ -233,7 +233,9 @@ sft_config = SFTConfig(
     # ── Optimiser ───────────────────────────────────────────────────────────
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
-    warmup_ratio=WARMUP_RATIO,
+    # replace warmup_ratio with warmup_steps
+    # 10% of total steps = 0.1 × (45213 / (2×8)) × 3 epochs ≈ 848 steps
+    warmup_steps=848,               # ← replaces warmup_ratio=0.1
     lr_scheduler_type="cosine",
     optim="paged_adamw_8bit",       # memory-efficient optimiser for QLoRA
 
@@ -270,7 +272,7 @@ sft_config = SFTConfig(
 # =============================================================================
 trainer = SFTTrainer(
     model=model,
-    tokenizer=tokenizer,
+    processing_class=tokenizer,
     args=sft_config,
     train_dataset=formatted["train"],
     eval_dataset=formatted["val"],
