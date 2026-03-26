@@ -211,7 +211,7 @@ wandb.init(
         "gradient_accumulation":  GRADIENT_ACCUMULATION,
         "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
         "epochs":                 NUM_EPOCHS,
-        "max_length":             MAX_SEQ_LENGTH,
+        "max_seq_length":         MAX_SEQ_LENGTH,
         "quantization":           "4-bit NF4 (unsloth pre-quantized)",
         "seed":                   config.SEED,
     },
@@ -238,7 +238,7 @@ sft_config = SFTConfig(
     optim="paged_adamw_8bit",       # memory-efficient optimiser for QLoRA
 
     # ── Sequence length ─────────────────────────────────────────────────────
-    max_seq_length=MAX_SEQ_LENGTH,
+    max_length=MAX_SEQ_LENGTH,
 
     # ── SFT-specific ─────────────────────────────────────────────────────────
     # dataset_text_field not needed when using messages format
