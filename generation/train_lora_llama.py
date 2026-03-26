@@ -10,6 +10,15 @@
 #   - Evaluation: BERTScore (semantic similarity) — EPIC/LLM-as-Judge run separately
 # =============================================================================
 
+#Package.                        Used by
+#transformersAutoTokenizer,      AutoModelForCausalLM, set_seed
+#datasets.                       load_from_diskpeftLoraConfig, TaskType, get_peft_modelaccelerateRequired internally by transformers Trainer for GPU trainingtrlSFTTrainer, SFTConfigbitsandbytespaged_adamw_8bit optimiserwandbexperiment tracking
+#peft                            LoraConfig, TaskType, get_peft_model
+#accelerate                      Required internally by transformers Trainer for GPU training
+#trl                             SFTTrainer, SFTConfig
+#bitsandbytes                    paged_adamw_8bit optimiser
+#wandb                           experiment tracking
+
 import os, sys, json, random, warnings
 warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"]   = "3"
