@@ -190,9 +190,6 @@ lora_config = LoraConfig(
     inference_mode=False,
 )
 
-model = get_peft_model(model, lora_config)
-model.print_trainable_parameters()
-
 # =============================================================================
 # 7.  W&B initialisation
 # =============================================================================
@@ -258,7 +255,6 @@ sft_config = SFTConfig(
     bf16=False,
 
     # ── Logging ─────────────────────────────────────────────────────────────
-    logging_dir=os.path.join(OUTPUT_DIR, "logs"),
     logging_steps=50,
     report_to="wandb",
 
@@ -279,6 +275,8 @@ trainer = SFTTrainer(
     peft_config=lora_config,
 )
 
+# Print trainable params — SFTTrainer applies LoRA internally
+trainer.model.print_trainable_parameters()
 print("\n── Starting LoRA generation training ───────────────────────────────────")
 trainer.train()
 
