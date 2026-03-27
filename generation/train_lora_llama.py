@@ -132,6 +132,15 @@ def format_as_messages(example):
         ]
     }
 
+def formatting_func(example):
+    """Format messages into a single text string for trl 0.11.4."""
+    text = tokenizer.apply_chat_template(
+        example["messages"],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    return text
+
 print("\n── Formatting dataset as instruction template ───────────────────────────")
 formatted = dataset.map(format_as_messages, remove_columns=["prompt", "response", "emotion"])
 print(formatted)
@@ -272,6 +281,7 @@ trainer = SFTTrainer(
     train_dataset=formatted["train"],
     eval_dataset=formatted["val"],
     peft_config=lora_config,
+    formatting_func=formatting_func,
 )
 
 # Print trainable params — SFTTrainer applies LoRA internally
