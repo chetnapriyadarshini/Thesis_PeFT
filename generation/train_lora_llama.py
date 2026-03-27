@@ -165,7 +165,7 @@ print("\n── Loading Llama 3.2 3B Instruct (4-bit via unsloth mirror) ──�
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
     device_map="auto",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
 )
 
 model.config.use_cache = False
