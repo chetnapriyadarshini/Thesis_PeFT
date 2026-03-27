@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"]   = "3"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"]   = "0"
-
+os.environ["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
 # ── Allow running from repo root ──────────────────────────────────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
