@@ -234,7 +234,7 @@ sft_config = SFTConfig(
     optim="paged_adamw_8bit",       # memory-efficient optimiser for QLoRA
 
     # ── Sequence length ─────────────────────────────────────────────────────
-    max_length=MAX_SEQ_LENGTH,
+    max_seq_length=MAX_SEQ_LENGTH,
 
     # ── SFT-specific ─────────────────────────────────────────────────────────
     # dataset_text_field not needed when using messages format
