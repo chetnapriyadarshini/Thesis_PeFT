@@ -283,6 +283,7 @@ sft_config = SFTConfig(
     gradient_accumulation_steps=GRADIENT_ACCUMULATION,
     # Allow training quantized model with custom adapters
     gradient_checkpointing=False,
+    remove_unused_columns=False,  # ReFT model doesn't follow PEFT base_model pattern
 
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
