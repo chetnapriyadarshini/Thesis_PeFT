@@ -267,7 +267,7 @@ sft_config = SFTConfig(
 # =============================================================================
 trainer = SFTTrainer(
     model=model,
-    processing_class=tokenizer,
+    tokenizer=tokenizer,
     args=sft_config,
     train_dataset=formatted["train"],
     eval_dataset=formatted["val"],
