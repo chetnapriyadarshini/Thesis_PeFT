@@ -277,7 +277,7 @@ trainer = SFTTrainer(
 # Print trainable params — SFTTrainer applies LoRA internally
 trainer.model.print_trainable_parameters()
 print("\n── Starting LoRA generation training ───────────────────────────────────")
-trainer.train()
+trainer.train(resume_from_checkpoint=True)
 
 # =============================================================================
 # 10.  Save LoRA adapter
