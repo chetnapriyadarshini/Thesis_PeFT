@@ -47,6 +47,7 @@ from transformers import (
 from trl import SFTTrainer, SFTConfig
 
 import config   # repo-level config.py
+import transformers.trainer as trainer_module
 
 # =============================================================================
 # 0.  Reproducibility
@@ -213,7 +214,7 @@ model.reft_interventions = nn.ModuleList([
 ])
 
 # Move interventions to same device as model
-device = next(model.parameters()).device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.reft_interventions.to(device)
 
 # Register forward hooks on the last layer norm of each transformer block
@@ -234,6 +235,11 @@ for idx, layer_idx in enumerate(REFT_LAYERS):
 
     handle = layer_norm.register_forward_hook(make_hook(intervention))
     hooks.append(handle)
+
+# Tell the Trainer this model has trainable parameters
+# by requiring gradients on intervention params
+for param in model.reft_interventions.parameters():
+    param.requires_grad = True
 
 # Print trainable parameters
 trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -275,6 +281,8 @@ sft_config = SFTConfig(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     gradient_accumulation_steps=GRADIENT_ACCUMULATION,
+    # Allow training quantized model with custom adapters
+    gradient_checkpointing=False,
 
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
@@ -306,6 +314,14 @@ sft_config = SFTConfig(
 # =============================================================================
 # 10.  Train
 # =============================================================================
+"""
+Disable the quantized model check in SFTTrainer 
+since we're handling ReFT manually and not using a peft_config. 
+This allows the trainer to recognise that there are trainable parameters (the ReFT intervention weights) 
+even though the base model is frozen and quantized.
+
+"""
+trainer_module._is_peft_model = lambda model: True 
 trainer = SFTTrainer(
     model=model,
     tokenizer=tokenizer,
