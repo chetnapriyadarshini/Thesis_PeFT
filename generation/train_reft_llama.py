@@ -220,7 +220,7 @@ model.reft_interventions.to(device)
 # Llama uses model.layers[i] for transformer blocks
 hooks = []
 for idx, layer_idx in enumerate(REFT_LAYERS):
-    layer_norm   = model.model.layers[layer_idx].post_feedforward_layernorm
+    layer_norm   = model.model.layers[layer_idx].post_attention_layernorm
     intervention = model.reft_interventions[idx]
 
     def make_hook(iv):
