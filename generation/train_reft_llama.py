@@ -1,0 +1,337 @@
+# =============================================================================
+# generation/train_reft_llama.py
+# Llama 3.2 3B Instruct + LoReFT (manual) — Empathetic Dialogue Generation
+#
+# ReFT is implemented manually using PyTorch forward hooks — no pyvene/pyreft
+# dependency. Same approach as classification/train_reft.py.
+#
+# LoReFT formula per layer, per position:
+#   h_new = h + Rᵀ(Wh + b − Rh)
+#
+# Key differences from train_lora_llama.py:
+#   - No LoraConfig/peft — ReFT interventions via forward hooks
+#   - Interventions on all 28 Llama transformer layers
+#   - Base model frozen, only R and W matrices trained
+#   - SFTTrainer used but without peft_config
+# =============================================================================
+
+#Package.                        Used by
+#transformers                    AutoTokenizer, AutoModelForCausalLM, set_seed
+#datasets                        load_from_disk
+#accelerate                      Required internally by transformers Trainer
+#trl                             SFTTrainer, SFTConfig
+#bitsandbytes                    paged_adamw_8bit optimiser
+#wandb                           experiment tracking
+
+import os, sys, json, random, warnings
+warnings.filterwarnings("ignore")
+os.environ["TF_CPP_MIN_LOG_LEVEL"]   = "3"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["CUDA_VISIBLE_DEVICES"]   = "0"
+os.environ["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
+
+# ── Allow running from repo root ──────────────────────────────────────────────
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import numpy as np
+import torch
+import torch.nn as nn
+import wandb
+
+from datasets import load_from_disk
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    set_seed,
+)
+from trl import SFTTrainer, SFTConfig
+
+import config   # repo-level config.py
+
+# =============================================================================
+# 0.  Reproducibility
+# =============================================================================
+set_seed(config.SEED)
+random.seed(config.SEED)
+np.random.seed(config.SEED)
+torch.manual_seed(config.SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(config.SEED)
+
+# =============================================================================
+# 1.  Paths & hyper-parameters
+# =============================================================================
+DATA_DIR   = os.path.join(config.BASE_DIR, "data", "generation")
+CKPT_DIR   = os.path.join(config.BASE_DIR, "checkpoints", "reft_generation")
+OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "reft_generation")
+
+os.makedirs(CKPT_DIR,   exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+MODEL_NAME = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+
+# ReFT hyper-parameters
+# Llama 3.2 3B has 28 transformer layers (0-27)
+REFT_LAYERS    = list(range(28))
+REFT_RANK      = 4          # low-rank dimension — same as classification ReFT
+REFT_POSITIONS = [0, -1]    # first token + last token
+
+# Training hyper-parameters — identical to LoRA for fair comparison
+LEARNING_RATE        = 2e-4
+BATCH_SIZE           = 2
+GRADIENT_ACCUMULATION = 8
+WEIGHT_DECAY         = 0.01
+MAX_SEQ_LENGTH       = 512
+
+# =============================================================================
+# 2.  Load dataset
+# =============================================================================
+print("\n── Loading generation dataset ──────────────────────────────────────────")
+dataset = load_from_disk(DATA_DIR)
+print(dataset)
+
+print("\nSample prompt:")
+print(dataset["train"][0]["prompt"])
+print("\nSample response:")
+print(dataset["train"][0]["response"])
+
+# =============================================================================
+# 3.  Format dataset as instruction template
+# =============================================================================
+SYSTEM_PROMPT = (
+    "You are an empathetic mental health support assistant. "
+    "A person has shared their situation and emotional state with you. "
+    "Respond with warmth, understanding, and supportive intent. "
+    "Acknowledge their feelings and provide gentle, non-clinical support."
+)
+
+def format_as_messages(example):
+    """Convert prompt/response pairs into the messages format for SFTTrainer."""
+    return {
+        "messages": [
+            {"role": "system",    "content": SYSTEM_PROMPT},
+            {"role": "user",      "content": example["prompt"]},
+            {"role": "assistant", "content": example["response"]},
+        ]
+    }
+
+print("\n── Formatting dataset as instruction template ───────────────────────────")
+formatted = dataset.map(format_as_messages, remove_columns=["prompt", "response", "emotion"])
+print(formatted)
+print("\nSample formatted message:")
+print(formatted["train"][0]["messages"])
+
+# =============================================================================
+# 4.  Load tokeniser
+# =============================================================================
+print("\n── Loading tokeniser ───────────────────────────────────────────────────")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+
+tokenizer.padding_side = "right"
+
+print(f"Vocab size:    {tokenizer.vocab_size:,}")
+print(f"Pad token:     {tokenizer.pad_token}")
+print(f"EOS token:     {tokenizer.eos_token}")
+
+def formatting_func(example):
+    """Format messages into a single text string for trl 0.11.4."""
+    text = tokenizer.apply_chat_template(
+        example["messages"],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    return text
+
+# =============================================================================
+# 5.  Load model (4-bit via unsloth mirror)
+# =============================================================================
+print("\n── Loading Llama 3.2 3B Instruct (4-bit via unsloth mirror) ────────────")
+
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    device_map="auto",
+    torch_dtype=torch.float16,
+)
+
+model.config.use_cache = False
+model.config.pretraining_tp = 1
+
+print(f"Model loaded. Memory: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+
+# =============================================================================
+# 6.  LoReFT intervention module
+# =============================================================================
+class LoReFTIntervention(nn.Module):
+    """
+    Manual LoReFT intervention — no pyvene dependency.
+
+    Formula: h_new = h + Rᵀ(Wh + b − Rh)
+      R = low-rank orthonormal projection (rank × embed_dim)
+      W = learned transform (embed_dim → rank) with bias
+    """
+
+    def __init__(self, embed_dim: int, rank: int, positions: list):
+        super().__init__()
+        self.positions = positions
+
+        self.R = nn.Linear(embed_dim, rank, bias=False)
+        torch.nn.init.orthogonal_(self.R.weight)
+
+        self.W = nn.Linear(embed_dim, rank, bias=True)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        h = h.clone()
+        for pos in self.positions:
+            h_pos = h[:, pos, :]
+            difference   = self.W(h_pos) - self.R(h_pos)
+            intervention = difference @ self.R.weight
+            h[:, pos, :] = h_pos + intervention
+        return h
+
+# =============================================================================
+# 7.  Apply LoReFT interventions via forward hooks
+# =============================================================================
+print("\n── Applying LoReFT interventions ───────────────────────────────────────")
+
+# Freeze ALL base model parameters
+for param in model.parameters():
+    param.requires_grad = False
+
+# Llama 3.2 hidden size is 3072 for 3B model
+embed_dim = model.config.hidden_size
+print(f"Hidden size: {embed_dim}")
+
+# Create interventions and register as a module list on the model
+# so their parameters are visible to the optimizer
+model.reft_interventions = nn.ModuleList([
+    LoReFTIntervention(embed_dim, REFT_RANK, REFT_POSITIONS)
+    for _ in REFT_LAYERS
+])
+
+# Move interventions to same device as model
+device = next(model.parameters()).device
+model.reft_interventions.to(device)
+
+# Register forward hooks on the last layer norm of each transformer block
+# Llama uses model.layers[i] for transformer blocks
+hooks = []
+for idx, layer_idx in enumerate(REFT_LAYERS):
+    layer_norm   = model.model.layers[layer_idx].post_feedforward_layernorm
+    intervention = model.reft_interventions[idx]
+
+    def make_hook(iv):
+        def hook(module, input, output):
+            # output may be a tuple in some transformer versions
+            if isinstance(output, tuple):
+                hidden = iv(output[0])
+                return (hidden,) + output[1:]
+            return iv(output)
+        return hook
+
+    handle = layer_norm.register_forward_hook(make_hook(intervention))
+    hooks.append(handle)
+
+# Print trainable parameters
+trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+total     = sum(p.numel() for p in model.parameters())
+print(f"trainable params: {trainable:,} || all params: {total:,} || "
+      f"trainable%: {100 * trainable / total:.4f}")
+
+# =============================================================================
+# 8.  W&B initialisation
+# =============================================================================
+wandb.init(
+    project="peft-mental-health",
+    name="llama3.2-reft-generation",
+    config={
+        "model":                  MODEL_NAME,
+        "method":                 "LoReFT (manual)",
+        "reft_rank":              REFT_RANK,
+        "reft_layers":            len(REFT_LAYERS),
+        "reft_positions":         str(REFT_POSITIONS),
+        "lr":                     LEARNING_RATE,
+        "batch_size":             BATCH_SIZE,
+        "gradient_accumulation":  GRADIENT_ACCUMULATION,
+        "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
+        "max_steps":              500,
+        "max_seq_length":         MAX_SEQ_LENGTH,
+        "quantization":           "4-bit NF4 (unsloth pre-quantized)",
+        "seed":                   config.SEED,
+    },
+    tags=["reft", "loreft", "manual", "llama3.2", "generation", "mental-health"],
+)
+
+# =============================================================================
+# 9.  SFTConfig — identical to LoRA for fair comparison
+# =============================================================================
+sft_config = SFTConfig(
+    output_dir=CKPT_DIR,
+
+    max_steps=500,
+    per_device_train_batch_size=BATCH_SIZE,
+    per_device_eval_batch_size=BATCH_SIZE,
+    gradient_accumulation_steps=GRADIENT_ACCUMULATION,
+
+    learning_rate=LEARNING_RATE,
+    weight_decay=WEIGHT_DECAY,
+    warmup_steps=50,
+    lr_scheduler_type="cosine",
+    optim="paged_adamw_8bit",
+
+    max_seq_length=MAX_SEQ_LENGTH,
+    packing=False,
+
+    eval_strategy="steps",
+    eval_steps=100,
+    save_strategy="steps",
+    save_steps=100,
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss",
+    greater_is_better=False,
+
+    fp16=False,
+    bf16=True,
+
+    logging_steps=50,
+    report_to="wandb",
+
+    seed=config.SEED,
+    data_seed=config.SEED,
+)
+
+# =============================================================================
+# 10.  Train
+# =============================================================================
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    args=sft_config,
+    train_dataset=formatted["train"],
+    eval_dataset=formatted["val"],
+    formatting_func=formatting_func,
+    # no peft_config — ReFT is applied via hooks
+)
+
+print("\n── Starting LoReFT generation training ─────────────────────────────────")
+trainer.train()
+
+# =============================================================================
+# 11.  Save ReFT intervention weights
+# =============================================================================
+reft_model_path = os.path.join(OUTPUT_DIR, "reft_model")
+os.makedirs(reft_model_path, exist_ok=True)
+
+torch.save(
+    {f"intervention_{i}": iv.state_dict()
+     for i, iv in enumerate(model.reft_interventions)},
+    os.path.join(reft_model_path, "reft_interventions.pt")
+)
+tokenizer.save_pretrained(reft_model_path)
+print(f"ReFT interventions saved → {reft_model_path}")
+
+wandb.finish()
+print("\n✅  LoReFT generation training complete.")
