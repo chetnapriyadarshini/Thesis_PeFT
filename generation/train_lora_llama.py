@@ -38,7 +38,7 @@ from transformers import (
     AutoModelForCausalLM,
     set_seed,
 )
-from peft import LoraConfig, TaskType, get_peft_model
+from peft import LoraConfig, TaskType
 from trl import SFTTrainer, SFTConfig
 
 import config   # repo-level config.py
@@ -82,9 +82,7 @@ LORA_TARGET_MODULES  = [
 LEARNING_RATE              = 2e-4
 BATCH_SIZE                 = 2
 GRADIENT_ACCUMULATION      = 8    # effective batch = BATCH_SIZE × GRADIENT_ACCUMULATION = 16
-NUM_EPOCHS                 = 3    # generation models converge faster than classification
 WEIGHT_DECAY               = 0.01
-WARMUP_RATIO               = 0.1
 MAX_SEQ_LENGTH             = 512  # prompt + response combined
 
 # =============================================================================
@@ -222,7 +220,8 @@ sft_config = SFTConfig(
     output_dir=CKPT_DIR,
 
     # ── Epochs & steps ──────────────────────────────────────────────────────
-    num_train_epochs=NUM_EPOCHS,
+    #num_train_epochs=NUM_EPOCHS,
+    max_steps = 500,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     gradient_accumulation_steps=GRADIENT_ACCUMULATION,
@@ -230,9 +229,7 @@ sft_config = SFTConfig(
     # ── Optimiser ───────────────────────────────────────────────────────────
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
-    # replace warmup_ratio with warmup_steps
-    # 10% of total steps = 0.1 × (45213 / (2×8)) × 3 epochs ≈ 848 steps
-    warmup_steps=848,               # ← replaces warmup_ratio=0.1
+    warmup_steps=50,               # # 10% of max_steps=500
     lr_scheduler_type="cosine",
     optim="paged_adamw_8bit",       # memory-efficient optimiser for QLoRA
 
@@ -244,8 +241,10 @@ sft_config = SFTConfig(
     packing=False,                  # don't pack sequences — empathetic dialogues vary in length
 
     # ── Evaluation & saving ─────────────────────────────────────────────────
-    eval_strategy="epoch",
-    save_strategy="epoch",
+    eval_strategy="steps",
+    eval_steps=100,
+    save_strategy="steps",
+    save_steps=100,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
     greater_is_better=False,
