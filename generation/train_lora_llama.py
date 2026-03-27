@@ -205,7 +205,7 @@ wandb.init(
         "batch_size":             BATCH_SIZE,
         "gradient_accumulation":  GRADIENT_ACCUMULATION,
         "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
-        "epochs":                 NUM_EPOCHS,
+        "max_steps":              500,
         "max_seq_length":         MAX_SEQ_LENGTH,
         "quantization":           "4-bit NF4 (unsloth pre-quantized)",
         "seed":                   config.SEED,
