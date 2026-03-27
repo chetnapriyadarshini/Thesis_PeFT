@@ -15,10 +15,18 @@ def set_seed(seed=SEED):
 
 # ── Paths ─────────────────────────────────────────────────────
 # Automatically works on both local and Kaggle
-if os.path.exists("/kaggle/working"):
-    BASE_DIR = "/kaggle/working"
+# Auto-detect environment
+os.makedirs(BASE_DIR, exist_ok=True)
+if os.path.exists("/workspace"):
+    BASE_DIR = "/workspace"       # RunPod
+elif os.path.exists("/kaggle/working"):
+    BASE_DIR = "/kaggle/working"  # Kaggle
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SEED = 42
+
+print(f"Config loaded |  BASE_DIR: {BASE_DIR}")
 
 DATA_DIR        = os.path.join(BASE_DIR, "data")
 CHECKPOINT_DIR  = os.path.join(BASE_DIR, "checkpoints")
