@@ -138,18 +138,14 @@ print(f"Vocab size:    {tokenizer.vocab_size:,}")
 print(f"Pad token:     {tokenizer.pad_token}")
 print(f"EOS token:     {tokenizer.eos_token}")
 
-# Apply formatting directly to dataset — store as 'text' field
-def apply_template(dataset):
+def formatting_func(example):
+    """Format messages into a single text string for trl 0.11.4."""
     text = tokenizer.apply_chat_template(
-        dataset["messages"],
+        example["messages"],
         tokenize=False,
         add_generation_prompt=False,
     )
-    return {"text": text}
-
-print("\n── Applying chat template ──────────────────────────────────────────────")
-text_dataset = formatted.map(apply_template, remove_columns=["messages"])
-print(text_dataset)
+    return text
 
 # =============================================================================
 # 5.  Load model (4-bit via unsloth mirror)
@@ -331,9 +327,10 @@ trainer = SFTTrainer(
     model=model,
     tokenizer=tokenizer,
     args=sft_config,
-    train_dataset=text_dataset["train"],
-    eval_dataset=text_dataset["val"],
-    dataset_text_field="text"
+    train_dataset=formatted["train"],
+    eval_dataset=formatted["val"],
+    formatting_func=formatting_func,
+    remove_unused_columns=False,
     # no peft_config — ReFT is applied via hooks
 )
 
