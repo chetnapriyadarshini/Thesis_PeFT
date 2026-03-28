@@ -115,7 +115,7 @@ print(f"EOS token:     {tokenizer.eos_token}")
 # =============================================================================
 # 4.  Pre-tokenize dataset (bypasses SFTTrainer tokenization issues)
 # =============================================================================
-from transformers import DataCollatorForLanguageModeling
+from transformers import default_data_collator
 
 SYSTEM_PROMPT = (
     "You are an empathetic mental health support assistant. "
@@ -139,7 +139,7 @@ def tokenize_example(dataset):
         text,
         truncation=True,
         max_length=MAX_SEQ_LENGTH,
-        padding=False,
+        padding="max_length",
     )
     tokenized["labels"] = tokenized["input_ids"].copy()
     return tokenized
@@ -326,10 +326,6 @@ even though the base model is frozen and quantized.
 
 """
 trainer_module._is_peft_model = lambda model: True 
-data_collator = DataCollatorForLanguageModeling(
-    tokenizer=tokenizer,
-    mlm=False,
-)
 
 trainer = SFTTrainer(
     model=model,
@@ -337,7 +333,7 @@ trainer = SFTTrainer(
     args=sft_config,
     train_dataset=tokenized_dataset["train"],
     eval_dataset=tokenized_dataset["val"],
-    data_collator=data_collator,
+    data_collator=default_data_collator,
     # no peft_config — ReFT is applied via hooks
 )
 
