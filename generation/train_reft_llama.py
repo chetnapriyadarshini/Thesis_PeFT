@@ -330,7 +330,6 @@ trainer = SFTTrainer(
     train_dataset=formatted["train"],
     eval_dataset=formatted["val"],
     formatting_func=formatting_func,
-    remove_unused_columns=False,
     # no peft_config — ReFT is applied via hooks
 )
 
