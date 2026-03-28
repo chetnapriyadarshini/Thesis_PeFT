@@ -97,33 +97,7 @@ print("\nSample response:")
 print(dataset["train"][0]["response"])
 
 # =============================================================================
-# 3.  Format dataset as instruction template
-# =============================================================================
-SYSTEM_PROMPT = (
-    "You are an empathetic mental health support assistant. "
-    "A person has shared their situation and emotional state with you. "
-    "Respond with warmth, understanding, and supportive intent. "
-    "Acknowledge their feelings and provide gentle, non-clinical support."
-)
-
-def format_as_messages(example):
-    """Convert prompt/response pairs into the messages format for SFTTrainer."""
-    return {
-        "messages": [
-            {"role": "system",    "content": SYSTEM_PROMPT},
-            {"role": "user",      "content": example["prompt"]},
-            {"role": "assistant", "content": example["response"]},
-        ]
-    }
-
-print("\n── Formatting dataset as instruction template ───────────────────────────")
-formatted = dataset.map(format_as_messages, remove_columns=["prompt", "response", "emotion"])
-print(formatted)
-print("\nSample formatted message:")
-print(formatted["train"][0]["messages"])
-
-# =============================================================================
-# 4.  Load tokeniser
+# 3.  Load tokeniser
 # =============================================================================
 print("\n── Loading tokeniser ───────────────────────────────────────────────────")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -138,14 +112,46 @@ print(f"Vocab size:    {tokenizer.vocab_size:,}")
 print(f"Pad token:     {tokenizer.pad_token}")
 print(f"EOS token:     {tokenizer.eos_token}")
 
-def formatting_func(example):
-    """Format messages into a single text string for trl 0.11.4."""
+# =============================================================================
+# 4.  Pre-tokenize dataset (bypasses SFTTrainer tokenization issues)
+# =============================================================================
+from transformers import DataCollatorForLanguageModeling
+
+SYSTEM_PROMPT = (
+    "You are an empathetic mental health support assistant. "
+    "A person has shared their situation and emotional state with you. "
+    "Respond with warmth, understanding, and supportive intent. "
+    "Acknowledge their feelings and provide gentle, non-clinical support."
+)
+
+def tokenize_example(dataset):
+    messages = [
+        {"role": "system",    "content": SYSTEM_PROMPT},
+        {"role": "user",      "content": dataset["prompt"]},
+        {"role": "assistant", "content": dataset["response"]},
+    ]
     text = tokenizer.apply_chat_template(
-        example["messages"],
+        messages,
         tokenize=False,
         add_generation_prompt=False,
     )
-    return text
+    tokenized = tokenizer(
+        text,
+        truncation=True,
+        max_length=MAX_SEQ_LENGTH,
+        padding=False,
+    )
+    tokenized["labels"] = tokenized["input_ids"].copy()
+    return tokenized
+
+print("\n── Tokenising dataset ──────────────────────────────────────────────────")
+tokenized_dataset = dataset.map(
+    tokenize_example,
+    remove_columns=["prompt", "response", "emotion"],
+    batched=False,
+)
+tokenized_dataset.set_format("torch")
+print(tokenized_dataset)
 
 # =============================================================================
 # 5.  Load model (4-bit via unsloth mirror)
@@ -291,9 +297,6 @@ sft_config = SFTConfig(
     lr_scheduler_type="cosine",
     optim="paged_adamw_8bit",
 
-    max_seq_length=MAX_SEQ_LENGTH,
-    packing=False,
-
     eval_strategy="steps",
     eval_steps=100,
     save_strategy="steps",
@@ -323,13 +326,18 @@ even though the base model is frozen and quantized.
 
 """
 trainer_module._is_peft_model = lambda model: True 
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer,
+    mlm=False,
+)
+
 trainer = SFTTrainer(
     model=model,
     tokenizer=tokenizer,
     args=sft_config,
-    train_dataset=formatted["train"],
-    eval_dataset=formatted["val"],
-    formatting_func=formatting_func,
+    train_dataset=tokenized_dataset["train"],
+    eval_dataset=tokenized_dataset["val"],
+    data_collator=data_collator,
     # no peft_config — ReFT is applied via hooks
 )
 
@@ -351,4 +359,4 @@ tokenizer.save_pretrained(reft_model_path)
 print(f"ReFT interventions saved → {reft_model_path}")
 
 wandb.finish()
-print("\n✅  LoReFT generation training complete.")
+print("\n  LoReFT generation training complete.")
