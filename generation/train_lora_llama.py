@@ -254,7 +254,7 @@ sft_config = SFTConfig(
     eval_steps=100,
     save_strategy="steps",
     save_steps=100,
-    load_best_model_at_end=False,  # don't load best model at end — saves the last checkpoint instead (best model is determined by eval_loss but may not be the final checkpoint)
+    load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
     greater_is_better=False,
 
