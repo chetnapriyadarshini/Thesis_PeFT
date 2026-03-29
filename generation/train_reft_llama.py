@@ -303,6 +303,10 @@ sft_config = SFTConfig(
     lr_scheduler_type="cosine",
     optim="paged_adamw_8bit",
 
+     # ── SFT-specific ─────────────────────────────────────────────────────────
+    # dataset_text_field not needed when using messages format
+    packing=False,                  # don't pack sequences — empathetic dialogues vary in length
+
     eval_strategy="steps",
     eval_steps=100,
     save_strategy="steps",
@@ -333,6 +337,19 @@ even though the base model is frozen and quantized.
 """
 trainer_module._is_peft_model = lambda model: True 
 
+from transformers import TrainerCallback
+
+class SaveReFTCallback(TrainerCallback):
+    """Save ReFT intervention weights at each checkpoint."""
+    def on_save(self, args, state, control, **kwargs):
+        ckpt_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+        torch.save(
+            {f"intervention_{i}": iv.state_dict()
+             for i, iv in enumerate(model.reft_interventions)},
+            os.path.join(ckpt_dir, "reft_interventions.pt")
+        )
+        print(f"ReFT interventions saved at step {state.global_step}")
+
 trainer = SFTTrainer(
     model=model,
     tokenizer=tokenizer,
@@ -340,6 +357,7 @@ trainer = SFTTrainer(
     train_dataset=tokenized_dataset["train"],
     eval_dataset=tokenized_dataset["val"],
     data_collator=default_data_collator,
+    callbacks=[SaveReFTCallback()],
     # no peft_config — ReFT is applied via hooks
 )
 
@@ -349,6 +367,35 @@ try:
 except TypeError as e:
     print(f"Warning: post-training error (expected): {e}")
     print("Continuing to save intervention weights...")
+
+# ── Manually load best checkpoint for ReFT ───────────────────────────────
+import glob
+
+# Find checkpoint with lowest eval loss from saved checkpoints
+checkpoints = glob.glob(os.path.join(CKPT_DIR, "checkpoint-*"))
+if checkpoints:
+    # Read trainer_state.json from each checkpoint to find best
+    best_ckpt = None
+    best_loss = float("inf")
+    for ckpt in checkpoints:
+        state_file = os.path.join(ckpt, "trainer_state.json")
+        if os.path.exists(state_file):
+            with open(state_file) as f:
+                state = json.load(f)
+            loss = state.get("best_metric", float("inf"))
+            if loss < best_loss:
+                best_loss = loss
+                best_ckpt = ckpt
+    
+    if best_ckpt:
+        print(f"Loading best checkpoint: {best_ckpt} (eval_loss={best_loss:.4f})")
+        # Load intervention weights from best checkpoint
+        interventions_path = os.path.join(best_ckpt, "reft_interventions.pt")
+        if os.path.exists(interventions_path):
+            state_dicts = torch.load(interventions_path)
+            for i, iv in enumerate(model.reft_interventions):
+                iv.load_state_dict(state_dicts[f"intervention_{i}"])
+            print("Best intervention weights loaded ✅")
 
 # =============================================================================
 # 11.  Save ReFT intervention weights
