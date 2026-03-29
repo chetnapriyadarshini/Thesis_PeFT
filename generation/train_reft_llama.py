@@ -42,6 +42,7 @@ from datasets import load_from_disk
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
+    BitsAndBytesConfig,
     set_seed,
 )
 from trl import SFTTrainer, SFTConfig
@@ -69,7 +70,7 @@ OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "reft_generation")
 os.makedirs(CKPT_DIR,   exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-MODEL_NAME = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"
+MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 
 # ReFT hyper-parameters
 # Llama 3.2 3B has 28 transformer layers (0-27)
@@ -164,8 +165,16 @@ print(tokenized_dataset)
 # =============================================================================
 print("\n── Loading Llama 3.2 3B Instruct (4-bit via unsloth mirror) ────────────")
 
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
+)
+
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
+    quantization_config=bnb_config,
     device_map="auto",
     torch_dtype=torch.float16,
 )
