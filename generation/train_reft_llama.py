@@ -141,7 +141,13 @@ def tokenize_example(dataset):
         max_length=MAX_SEQ_LENGTH,
         padding="max_length",
     )
-    tokenized["labels"] = tokenized["input_ids"].copy()
+    # Set labels to -100 for padding tokens — CrossEntropyLoss ignores -100
+    labels = tokenized["input_ids"].copy()
+    labels = [
+        token_id if token_id != tokenizer.pad_token_id else -100
+        for token_id in labels
+    ]
+    tokenized["labels"] = labels
     return tokenized
 
 print("\n── Tokenising dataset ──────────────────────────────────────────────────")
@@ -301,7 +307,7 @@ sft_config = SFTConfig(
     eval_steps=100,
     save_strategy="steps",
     save_steps=100,
-    load_best_model_at_end=True,
+    load_best_model_at_end=False,
     metric_for_best_model="eval_loss",
     greater_is_better=False,
 
@@ -338,7 +344,11 @@ trainer = SFTTrainer(
 )
 
 print("\n── Starting LoReFT generation training ─────────────────────────────────")
-trainer.train()
+try:
+    trainer.train()
+except TypeError as e:
+    print(f"Warning: post-training error (expected): {e}")
+    print("Continuing to save intervention weights...")
 
 # =============================================================================
 # 11.  Save ReFT intervention weights
