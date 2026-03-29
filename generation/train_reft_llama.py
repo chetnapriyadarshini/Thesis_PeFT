@@ -161,9 +161,9 @@ tokenized_dataset.set_format("torch")
 print(tokenized_dataset)
 
 # =============================================================================
-# 5.  Load model (4-bit via unsloth mirror)
+# 5.  Load model with 4-bit quantization (QLoRA)
 # =============================================================================
-print("\n── Loading Llama 3.2 3B Instruct (4-bit via unsloth mirror) ────────────")
+print("\n── Loading Llama 3.2 3B Instruct ────────────")
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -286,7 +286,7 @@ wandb.init(
         "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
         "max_steps":              500,
         "max_seq_length":         MAX_SEQ_LENGTH,
-        "quantization":           "4-bit NF4 (unsloth pre-quantized)",
+        "quantization":           "4-bit NF4 (official meta-llama weights)",
         "seed":                   config.SEED,
     },
     tags=["reft", "loreft", "manual", "llama3.2", "generation", "mental-health"],
