@@ -99,7 +99,26 @@ print("\nSample response:")
 print(dataset["train"][0]["response"])
 
 # =============================================================================
-# 3.  Format dataset as instruction template
+# 3.  Load tokeniser
+# =============================================================================
+print("\n── Loading tokeniser ───────────────────────────────────────────────────")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+# Llama 3.2 doesn't have a dedicated pad token — use eos_token
+# This is standard practice for causal LM fine-tuning
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+
+# Right padding for training (causal LM reads left to right)
+tokenizer.padding_side = "right"
+
+print(f"Vocab size:    {tokenizer.vocab_size:,}")
+print(f"Pad token:     {tokenizer.pad_token}")
+print(f"EOS token:     {tokenizer.eos_token}")
+
+# =============================================================================
+# 4.  Format dataset as instruction template
 # =============================================================================
 # Llama 3.2 Instruct uses the following chat template:
 #   <|begin_of_text|>
@@ -146,25 +165,6 @@ formatted = dataset.map(format_as_messages, remove_columns=["prompt", "response"
 print(formatted)
 print("\nSample formatted message:")
 print(formatted["train"][0]["messages"])
-
-# =============================================================================
-# 4.  Load tokeniser
-# =============================================================================
-print("\n── Loading tokeniser ───────────────────────────────────────────────────")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-
-# Llama 3.2 doesn't have a dedicated pad token — use eos_token
-# This is standard practice for causal LM fine-tuning
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-
-# Right padding for training (causal LM reads left to right)
-tokenizer.padding_side = "right"
-
-print(f"Vocab size:    {tokenizer.vocab_size:,}")
-print(f"Pad token:     {tokenizer.pad_token}")
-print(f"EOS token:     {tokenizer.eos_token}")
 
 # =============================================================================
 # 5.  Load model with 4-bit quantization (QLoRA)
@@ -254,7 +254,7 @@ sft_config = SFTConfig(
     eval_steps=100,
     save_strategy="steps",
     save_steps=100,
-    load_best_model_at_end=True,
+    load_best_model_at_end=False,  # don't load best model at end — saves the last checkpoint instead (best model is determined by eval_loss but may not be the final checkpoint)
     metric_for_best_model="eval_loss",
     greater_is_better=False,
 
