@@ -170,7 +170,7 @@ print(formatted["train"][0]["messages"])
 # =============================================================================
 # 5.  Load model with 4-bit quantization (QLoRA)
 # =============================================================================
-print("\n── Loading Llama 3.2 3B Instruct (4-bit via unsloth mirror) ────────────")
+print("\n── Loading Llama 3.2 3B Instruct ────────────")
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -269,7 +269,7 @@ sft_config = SFTConfig(
 
     # ── Precision ───────────────────────────────────────────────────────────
     fp16=False,
-    bf16=True, #works with Unsloth's 4-bit models on T4 (16GB) — faster than fp16 and compatible with older GPUs
+    bf16=True, ## RTX 4090 natively supports bfloat16 — faster and more stable than fp16
 
     # ── Logging ─────────────────────────────────────────────────────────────
     logging_steps=50,
