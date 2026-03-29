@@ -36,6 +36,7 @@ from datasets import load_from_disk
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
+    BitsAndBytesConfig,
     set_seed,
 )
 from peft import LoraConfig, TaskType
@@ -63,7 +64,7 @@ OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "lora_generation")
 os.makedirs(CKPT_DIR,   exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-MODEL_NAME = "unsloth/Llama-3.2-3B-Instruct-bnb-4bit"   # 4-bit quantized version of Llama 3.2 3B Instruct
+MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"   # 4-bit quantized version of Llama 3.2 3B Instruct
 
 # LoRA hyper-parameters
 # Llama uses q_proj/k_proj/v_proj/o_proj for attention
@@ -171,8 +172,16 @@ print(formatted["train"][0]["messages"])
 # =============================================================================
 print("\n── Loading Llama 3.2 3B Instruct (4-bit via unsloth mirror) ────────────")
 
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
+)
+
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
+    quantization_config=bnb_config,
     device_map="auto",
     torch_dtype=torch.float16,
 )
@@ -216,7 +225,7 @@ wandb.init(
         "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
         "max_steps":              500,
         "max_seq_length":         MAX_SEQ_LENGTH,
-        "quantization":           "4-bit NF4 (unsloth pre-quantized)",
+        "quantization":           "4-bit NF4 (official meta-llama weights)",
         "seed":                   config.SEED,
     },
     tags=["lora", "llama3.2", "generation", "mental-health", "qlora"],
