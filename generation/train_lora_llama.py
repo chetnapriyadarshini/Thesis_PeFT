@@ -302,7 +302,7 @@ trainer.train()
 # 10.  Save LoRA adapter
 # =============================================================================
 adapter_path = os.path.join(OUTPUT_DIR, "lora_adapter")
-model.save_pretrained(adapter_path)
+trainer.model.save_pretrained(adapter_path)
 tokenizer.save_pretrained(adapter_path)
 print(f"LoRA adapter saved → {adapter_path}")
 
