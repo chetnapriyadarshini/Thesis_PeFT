@@ -1,0 +1,64 @@
+# =============================================================================
+# requirements.txt
+# Pinned dependency versions for Thesis_PeFT
+#
+# Verified working environment:
+#   GPU:      NVIDIA RTX 4090 (24GB VRAM)
+#   CUDA:     12.4
+#   Python:   3.10 or 3.11
+#   Template: PyTorch 2.4 + CUDA 12.4 (RunPod)
+#
+# Install order matters — follow exactly:
+#
+#   pip install torch==2.4.1 torchvision==0.19.1 \
+#       --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+#
+# Classification experiments (Kaggle T4):
+#   Same stack but fp16 only — no BitsAndBytes needed
+# =============================================================================
+
+# ── Core ML ──────────────────────────────────────────────────────────────────
+# torch and torchvision installed separately via --index-url (see above)
+# torch==2.4.1+cu124
+# torchvision==0.19.1+cu124
+
+# ── HuggingFace stack ─────────────────────────────────────────────────────────
+transformers==4.45.1        # newer versions break bitsandbytes + trl compatibility
+datasets==3.0.1
+tokenizers==0.20.0
+huggingface-hub==0.25.1
+accelerate==0.34.2
+
+# ── PEFT / Fine-tuning ────────────────────────────────────────────────────────
+peft==0.13.0
+trl==0.11.4                 # newer versions: processing_class vs tokenizer, max_length vs max_seq_length
+
+# ── Quantization ──────────────────────────────────────────────────────────────
+bitsandbytes==0.43.3        # works with torch 2.4.1+cu124; older versions break on newer transformers
+
+# ── Experiment tracking ───────────────────────────────────────────────────────
+wandb==0.18.3
+
+# ── Data processing ───────────────────────────────────────────────────────────
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.2
+scipy==1.13.1
+
+# ── PII redaction (data pipeline) ────────────────────────────────────────────
+presidio-analyzer==2.2.355
+presidio-anonymizer==2.2.355
+spacy==3.8.2
+# After installing spacy: python -m spacy download en_core_web_lg
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+bert-score==0.3.13
+openai==1.51.0              # GPT-4o judge for EPIC evaluation
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+tqdm==4.66.5
+packaging==24.1
+safetensors==0.4.5
+sentencepiece==0.2.0
+protobuf==5.28.2
