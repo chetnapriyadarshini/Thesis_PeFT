@@ -195,6 +195,8 @@ for i, iv in enumerate(base_model.reft_interventions):
     iv.load_state_dict(state_dicts[f"intervention_{i}"])
     iv.to("cuda")
     iv.eval()
+    
+base_model.reft_interventions.to(torch.float16) 
 print(f"ReFT interventions loaded")
 
 hooks = []
