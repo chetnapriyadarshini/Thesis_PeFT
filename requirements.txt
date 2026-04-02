@@ -17,7 +17,9 @@
 # Classification experiments (Kaggle T4):
 #   Same stack but fp16 only — no BitsAndBytes needed
 # =============================================================================
-
+#transformers==4.45.1 + trl==0.11.4 — paired, must match
+#bitsandbytes==0.43.3 — works with torch 2.4.1+cu124
+#torch==2.4.1+cu124 — requires CUDA 12.4 driver, must install from the cu124 index
 # ── Core ML ──────────────────────────────────────────────────────────────────
 # torch and torchvision installed separately via --index-url (see above)
 # torch==2.4.1+cu124
