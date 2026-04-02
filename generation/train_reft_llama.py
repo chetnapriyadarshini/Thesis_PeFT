@@ -64,8 +64,8 @@ if torch.cuda.is_available():
 # 1.  Paths & hyper-parameters
 # =============================================================================
 DATA_DIR   = os.path.join(config.BASE_DIR, "data", "generation")
-CKPT_DIR   = os.path.join(config.BASE_DIR, "checkpoints", "reft_generation")
-OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "reft_generation")
+CKPT_DIR   = os.path.join(config.BASE_DIR, "checkpoints", "reft_generation_800steps")
+OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "reft_generation_800steps")
 
 os.makedirs(CKPT_DIR,   exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -273,7 +273,7 @@ print(f"trainable params: {trainable:,} || all params: {total:,} || "
 # =============================================================================
 wandb.init(
     project="peft-mental-health",
-    name="llama3.2-reft-generation",
+    name="llama3.2-reft-generation-800steps",
     config={
         "model":                  MODEL_NAME,
         "method":                 "LoReFT (manual)",
@@ -284,7 +284,7 @@ wandb.init(
         "batch_size":             BATCH_SIZE,
         "gradient_accumulation":  GRADIENT_ACCUMULATION,
         "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
-        "max_steps":              500,
+        "max_steps":              800,
         "max_seq_length":         MAX_SEQ_LENGTH,
         "quantization":           "4-bit NF4 (official meta-llama weights)",
         "seed":                   config.SEED,
@@ -298,7 +298,7 @@ wandb.init(
 sft_config = SFTConfig(
     output_dir=CKPT_DIR,
 
-    max_steps=500,
+    max_steps=800,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     gradient_accumulation_steps=GRADIENT_ACCUMULATION,
@@ -308,7 +308,7 @@ sft_config = SFTConfig(
 
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
-    warmup_steps=50,
+    warmup_steps=80,
     lr_scheduler_type="cosine",
     optim="paged_adamw_8bit",
 
