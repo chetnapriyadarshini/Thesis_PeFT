@@ -64,8 +64,8 @@ if torch.cuda.is_available():
 # 1.  Paths & hyper-parameters
 # =============================================================================
 DATA_DIR   = os.path.join(config.BASE_DIR, "data", "generation")
-CKPT_DIR   = os.path.join(config.BASE_DIR, "checkpoints", "reft_generation_800steps")
-OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "reft_generation_800steps")
+CKPT_DIR   = os.path.join(config.BASE_DIR, "checkpoints", "reft_generation_expanded")
+OUTPUT_DIR = os.path.join(config.BASE_DIR, "results", "reft_generation_expanded")
 
 os.makedirs(CKPT_DIR,   exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -76,7 +76,7 @@ MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 # Llama 3.2 3B has 28 transformer layers (0-27)
 REFT_LAYERS    = list(range(28))
 REFT_RANK      = 4          # low-rank dimension — same as classification ReFT
-REFT_POSITIONS = [0, -1]    # first token + last token
+REFT_POSITIONS = [0, 1, 2, -3, -2, -1]  # first 3 + last 3 tokens
 
 # Training hyper-parameters — identical to LoRA for fair comparison
 LEARNING_RATE        = 2e-4
@@ -273,7 +273,7 @@ print(f"trainable params: {trainable:,} || all params: {total:,} || "
 # =============================================================================
 wandb.init(
     project="peft-mental-health",
-    name="llama3.2-reft-generation-800steps",
+    name="llama3.2-reft-generation-expanded-positions",
     config={
         "model":                  MODEL_NAME,
         "method":                 "LoReFT (manual)",
@@ -284,7 +284,7 @@ wandb.init(
         "batch_size":             BATCH_SIZE,
         "gradient_accumulation":  GRADIENT_ACCUMULATION,
         "effective_batch_size":   BATCH_SIZE * GRADIENT_ACCUMULATION,
-        "max_steps":              800,
+        "max_steps":              500,
         "max_seq_length":         MAX_SEQ_LENGTH,
         "quantization":           "4-bit NF4 (official meta-llama weights)",
         "seed":                   config.SEED,
@@ -298,7 +298,7 @@ wandb.init(
 sft_config = SFTConfig(
     output_dir=CKPT_DIR,
 
-    max_steps=800,
+    max_steps=500,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     gradient_accumulation_steps=GRADIENT_ACCUMULATION,
@@ -308,7 +308,7 @@ sft_config = SFTConfig(
 
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
-    warmup_steps=80,
+    warmup_steps=50,
     lr_scheduler_type="cosine",
     optim="paged_adamw_8bit",
 
