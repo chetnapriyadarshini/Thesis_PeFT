@@ -50,7 +50,7 @@ torch.manual_seed(config.SEED)
 
 MODEL_NAME     = "meta-llama/Llama-3.2-3B-Instruct"
 LORA_PATH      = os.path.join(config.BASE_DIR, "results", "lora_generation", "lora_adapter")
-REFT_PATH      = os.path.join(config.BASE_DIR, "results", "reft_generation_800steps", "reft_model")
+REFT_PATH      = os.path.join(config.BASE_DIR, "results", "reft_generation_expanded", "reft_model")
 DATA_DIR       = os.path.join(config.BASE_DIR, "data", "generation")
 RESULTS_DIR    = os.path.join(config.BASE_DIR, "results", "evaluation")
 os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -59,7 +59,7 @@ N_SAMPLES      = 500
 MAX_NEW_TOKENS = 150
 REFT_LAYERS    = list(range(28))
 REFT_RANK      = 4
-REFT_POSITIONS = [0, -1]
+REFT_POSITIONS = [0, 1, 2, -3, -2, -1] # first 3 + last 3 tokens
 
 SYSTEM_PROMPT = (
     "You are an empathetic mental health support assistant. "
@@ -363,7 +363,7 @@ full_results = {
     ]
 }
 
-with open(os.path.join(RESULTS_DIR, "generation_eval_results_800steps.json"), "w") as f:
+with open(os.path.join(RESULTS_DIR, "generation_eval_results_expanded_positions.json"), "w") as f:
     json.dump(full_results, f, indent=2)
 
 # Print summary
@@ -377,5 +377,5 @@ print(f"\nEPIC (GPT-4o, 1-5 scale):")
 for dim in DIMS:
     print(f"  {dim:28s}  LoRA={lora_epic_avg.get(dim,'—')}  ReFT={reft_epic_avg.get(dim,'—')}")
 print("="*62)
-print("\n✅ Evaluation complete.")
-print(f"Full results → {RESULTS_DIR}/generation_eval_results_800steps.json")
+print("\n Evaluation complete.")
+print(f"Full results → {RESULTS_DIR}/generation_eval_results_expanded_positions.json")
