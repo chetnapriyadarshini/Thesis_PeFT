@@ -363,7 +363,7 @@ full_results = {
     ]
 }
 
-with open(os.path.join(RESULTS_DIR, "generation_eval_results.json"), "w") as f:
+with open(os.path.join(RESULTS_DIR, "generation_eval_results_800steps.json"), "w") as f:
     json.dump(full_results, f, indent=2)
 
 # Print summary
@@ -378,4 +378,4 @@ for dim in DIMS:
     print(f"  {dim:28s}  LoRA={lora_epic_avg.get(dim,'—')}  ReFT={reft_epic_avg.get(dim,'—')}")
 print("="*62)
 print("\n✅ Evaluation complete.")
-print(f"Full results → {RESULTS_DIR}/generation_eval_results.json")
+print(f"Full results → {RESULTS_DIR}/generation_eval_results_800steps.json")
