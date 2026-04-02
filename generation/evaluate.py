@@ -50,7 +50,7 @@ torch.manual_seed(config.SEED)
 
 MODEL_NAME     = "meta-llama/Llama-3.2-3B-Instruct"
 LORA_PATH      = os.path.join(config.BASE_DIR, "results", "lora_generation", "lora_adapter")
-REFT_PATH      = os.path.join(config.BASE_DIR, "results", "reft_generation", "reft_model")
+REFT_PATH      = os.path.join(config.BASE_DIR, "results", "reft_generation_800steps", "reft_model")
 DATA_DIR       = os.path.join(config.BASE_DIR, "data", "generation")
 RESULTS_DIR    = os.path.join(config.BASE_DIR, "results", "evaluation")
 os.makedirs(RESULTS_DIR, exist_ok=True)
