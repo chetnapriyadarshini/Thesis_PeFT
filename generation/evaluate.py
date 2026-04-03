@@ -150,9 +150,15 @@ class LoReFTIntervention(nn.Module):
     def forward(self, h):
         h = h.clone()
         for pos in self.positions:
+            # Guard against sequences shorter than the position index
+            if h.shape[1] <= abs(pos):
+                continue
             h_pos = h[:, pos, :]
-            difference   = self.W(h_pos) - self.R(h_pos)
-            intervention = difference @ self.R.weight
+            W_weight = self.W.weight.to(h_pos.dtype)
+            W_bias   = self.W.bias.to(h_pos.dtype)
+            R_weight = self.R.weight.to(h_pos.dtype)
+            difference   = (h_pos @ W_weight.T + W_bias) - (h_pos @ R_weight.T)
+            intervention = difference @ R_weight
             h[:, pos, :] = h_pos + intervention
         return h
 
