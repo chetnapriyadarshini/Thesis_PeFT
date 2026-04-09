@@ -63,7 +63,7 @@ print("Presidio ready")
 
 # ── Constants ─────────────────────────────────────────────────
 # Keywords used to filter clinical MH content from offmychest
-# Removed: therapy, therapist, medication, psychiatrist, anxious
+# Did not remove: therapy, therapist, medication, psychiatrist, anxious
 # (too general — people use these in everyday contexts)
 MH_KEYWORDS = [
     "suicide", "suicidal", "self harm", "self-harm", "overdose",
