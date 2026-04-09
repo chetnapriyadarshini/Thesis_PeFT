@@ -404,7 +404,7 @@ if checkpoints:
             state_dicts = torch.load(interventions_path)
             for i, iv in enumerate(model.reft_interventions):
                 iv.load_state_dict(state_dicts[f"intervention_{i}"])
-            print("Best intervention weights loaded ✅")
+            print("Best intervention weights loaded ")
 
 # =============================================================================
 # 11.  Save ReFT intervention weights
