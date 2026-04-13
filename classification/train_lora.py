@@ -228,7 +228,7 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
         data_norm = (data - data.min()) / (data.max() - data.min() + 1e-9)
         for i in range(data.shape[0]):
             for j in range(data.shape[1]):
-                text_colour = "white" if data_norm[i, j] > 0.5 else "black"
+                text_colour = "white" if data_norm[i, j] > 0.7 else "black"
                 ax.text(j + 0.5, i + 0.5, f"{data[i, j]:{fmt}}",
                         ha="center", va="center",
                         fontsize=11, fontweight="bold", color=text_colour)
