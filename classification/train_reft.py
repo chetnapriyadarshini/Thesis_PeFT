@@ -361,10 +361,13 @@ def plot_confusion_matrix(trainer, dataset, id2label, output_dir, split="test"):
             xticklabels=label_names, yticklabels=label_names,
             linewidths=0.5, ax=ax,
         )
-        data_norm = (data - data.min()) / (data.max() - data.min() + 1e-9)
         for i in range(data.shape[0]):
             for j in range(data.shape[1]):
-                text_colour = "white" if data_norm[i, j] > 0.5 else "black"
+                # Use actual heatmap colour luminance to pick readable text colour
+                norm_val = (data[i, j] - data.min()) / (data.max() - data.min() + 1e-9)
+                rgba = plt.cm.Blues(norm_val)
+                luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+                text_colour = "white" if luminance < 0.5 else "black"
                 ax.text(j + 0.5, i + 0.5, f"{data[i, j]:{fmt}}",
                         ha="center", va="center",
                         fontsize=11, fontweight="bold", color=text_colour)
